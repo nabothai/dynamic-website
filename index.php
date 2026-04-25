@@ -1,7 +1,10 @@
 <?php include 'header.php'; ?>
 <main class="home-page" style="min-height:70vh;">
     <section class="hero" style="text-align:center; margin:3em 0 2em 0;">
-        <h1 style="font-size:2.7rem; color:#c0392b; margin-bottom:0.7em;">Welcome to <span style="color:#27ae60">Bella Italia!</span></h1>
+        <h1 style="font-size:2.7rem; color:#c0392b; margin-bottom:0.7em;">Welcome to <span style="color:#27ae60">ZimBites Restaurant!</span></h1>
+        <div style="margin: 1em 0; text-align: center;">
+            <button onclick="window.history.back()" class="btn">&larr; Back</button>
+        </div>
         <p style="font-size:1.2rem; color:#444; margin-bottom:2em;">Delicious Italian food, made fresh every day.<br>Order online or visit us in person!</p>
         <div style="margin-bottom:2em;">
             <a href="menu.php" class="btn btn-primary" style="margin:0 0.5em 0.5em 0.5em; font-size:1.1em;">View Our Menu</a>
@@ -9,7 +12,10 @@
             <a href="register.php" class="btn" style="margin:0 0.5em 0.5em 0.5em;">Register</a>
         </div>
     </section>
-
+        <div style="margin: 1em 0; text-align: center;">
+            <button onclick="window.history.back()" class="btn">&larr; Back</button>
+        </div>
+    </main>
     <section class="highlights" style="max-width:900px; margin:2em auto;">
         <h2 style="text-align:center; color:#c0392b; font-size:2rem; margin-bottom:1.5em;">Popular Dishes</h2>
         <div style="display:flex; flex-wrap:wrap; gap:2em; justify-content:center;">
@@ -28,4 +34,9 @@
         </div>
     </section>
 </main>
+<div style="margin: 1em 0; text-align: center;">
+    <button onclick="window.history.back()" class="btn">&larr; Back</button>
+</div>
 <?php include 'footer.php'; ?>
+<script src="scripts/homepage.js"></script>
+<link rel="stylesheet" href="styles/homepage.css">

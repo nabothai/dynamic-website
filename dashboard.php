@@ -5,62 +5,81 @@ require 'auth.php';
 // Block access to this page if the user is not logged in
 requireLogin();
 
-// Handle order placement when the user clicks "Place Order"
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['place_order'])) {
+$success = '';
+$error = '';
 
-    // Only proceed if there are items in the cart
-    if (!empty($_SESSION['cart'])) {
-        $total = 0;
-
-        // Get the IDs of all items currently in the cart
-        $ids          = array_keys($_SESSION['cart']);
-
-        // Build a string of ? placeholders for the IN clause (one per item)
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
-
-        // Fetch the menu item details for all cart items in one query
-        $stmt = $pdo->prepare("SELECT * FROM menu_items WHERE id IN ($placeholders)");
-        $stmt->execute($ids);
-
-        // Store items in an array keyed by their ID for easy lookup
-        $menuItems = [];
-        foreach ($stmt->fetchAll() as $r) {
-            $menuItems[$r['id']] = $r;
-        }
-
-        // Calculate the total price of the order
-        foreach ($_SESSION['cart'] as $id => $qty) {
-            if (isset($menuItems[$id])) {
-                $total += $menuItems[$id]['price'] * $qty;
-            }
-        }
-
-        // Insert the order record into the orders table
-        $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_price) VALUES (?, ?)");
-        $stmt->execute([$_SESSION['user_id'], $total]);
-
-        // Get the ID of the order we just inserted
-        $order_id = $pdo->lastInsertId();
-
-        // Insert each cart item as a row in the order_items table
-        foreach ($_SESSION['cart'] as $item_id => $qty) {
-            if (isset($menuItems[$item_id])) {
-                $stmt = $pdo->prepare("INSERT INTO order_items (order_id, menu_item_id, quantity, price) VALUES (?, ?, ?, ?)");
-                $stmt->execute([$order_id, $item_id, $qty, $menuItems[$item_id]['price']]);
-            }
-        }
-
-        // Empty the cart after the order is placed
-        $_SESSION['cart'] = [];
-        $success = "Order placed successfully!";
+// Handle cart updates and order actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        die('Invalid request.');
     }
-}
 
-// Handle the "Clear Cart" button
-if (isset($_GET['clear_cart'])) {
-    $_SESSION['cart'] = [];
-    header("Location: dashboard.php");
-    exit();
+    if (isset($_POST['update_quantity'], $_POST['item_id'], $_POST['quantity'])) {
+        $item_id = filter_var($_POST['item_id'], FILTER_VALIDATE_INT);
+        $qty     = filter_var($_POST['quantity'], FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 99]
+        ]);
+
+        if ($item_id && $qty && isset($_SESSION['cart'][$item_id])) {
+            $_SESSION['cart'][$item_id] = $qty;
+            $success = 'Cart quantities updated.';
+        }
+    }
+
+    if (isset($_POST['remove_item'], $_POST['item_id'])) {
+        $item_id = filter_var($_POST['item_id'], FILTER_VALIDATE_INT);
+        if ($item_id && isset($_SESSION['cart'][$item_id])) {
+            unset($_SESSION['cart'][$item_id]);
+            $success = 'Item removed from your cart.';
+        }
+    }
+
+    if (isset($_POST['clear_cart'])) {
+        $_SESSION['cart'] = [];
+        header('Location: dashboard.php');
+        exit();
+    }
+
+    if (isset($_POST['place_order'])) {
+        if (!empty($_SESSION['cart'])) {
+            $total = 0;
+            $ids = array_keys($_SESSION['cart']);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $pdo->prepare("SELECT * FROM menu_items WHERE id IN ($placeholders)");
+            $stmt->execute($ids);
+            $menuItems = [];
+
+            foreach ($stmt->fetchAll() as $r) {
+                $menuItems[$r['id']] = $r;
+            }
+
+            foreach ($_SESSION['cart'] as $id => $qty) {
+                if (isset($menuItems[$id])) {
+                    $total += $menuItems[$id]['price'] * $qty;
+                }
+            }
+
+            if ($total > 0) {
+                $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_price) VALUES (?, ?)");
+                $stmt->execute([$_SESSION['user_id'], $total]);
+                $order_id = $pdo->lastInsertId();
+
+                foreach ($_SESSION['cart'] as $item_id => $qty) {
+                    if (isset($menuItems[$item_id])) {
+                        $stmt = $pdo->prepare("INSERT INTO order_items (order_id, menu_item_id, quantity, price) VALUES (?, ?, ?, ?)");
+                        $stmt->execute([$order_id, $item_id, $qty, $menuItems[$item_id]['price']]);
+                    }
+                }
+
+                $_SESSION['cart'] = [];
+                $success = "Order placed successfully!";
+            } else {
+                $error = 'Unable to place your order. Please review your cart.';
+            }
+        } else {
+            $error = 'Your cart is empty.';
+        }
+    }
 }
 
 // Fetch all orders placed by this user, newest first
@@ -73,7 +92,7 @@ $orders = $stmt->fetchAll();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Dashboard - Bella Italia</title>
+    <title>My Dashboard - ZimBites Restaurant</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -83,8 +102,11 @@ $orders = $stmt->fetchAll();
         <h1>Welcome, <?= htmlspecialchars($_SESSION['name']) ?>!</h1>
 
         <!-- Show order confirmation message if order was just placed -->
-        <?php if (isset($success)): ?>
-            <div class="alert success"><?= $success ?></div>
+        <?php if ($success): ?>
+            <div class="alert success"><?= htmlspecialchars($success) ?></div>
+        <?php endif; ?>
+        <?php if ($error): ?>
+            <div class="alert error"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
         <!-- ===== CART SECTION ===== -->
@@ -107,7 +129,7 @@ $orders = $stmt->fetchAll();
                 ?>
 
                 <table class="data-table">
-                    <tr><th>Item</th><th>Qty</th><th>Price</th></tr>
+                    <tr><th>Item</th><th>Qty</th><th>Price</th><th>Actions</th></tr>
 
                     <?php foreach ($cartItems as $ci):
                         $qty      = $_SESSION['cart'][$ci['id']];   // Quantity from the session
@@ -116,8 +138,22 @@ $orders = $stmt->fetchAll();
                     ?>
                     <tr>
                         <td><?= htmlspecialchars($ci['name']) ?></td>
-                        <td><?= $qty ?></td>
+                        <td>
+                            <form method="POST" style="display:flex; gap:0.5rem; align-items:center;">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                                <input type="hidden" name="item_id" value="<?= $ci['id'] ?>">
+                                <input type="number" name="quantity" value="<?= $qty ?>" min="1" max="99" style="width:70px; padding:0.3rem;">
+                                <button type="submit" name="update_quantity" class="btn">Update</button>
+                            </form>
+                        </td>
                         <td>$<?= number_format($subtotal, 2) ?></td>
+                        <td>
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                                <input type="hidden" name="item_id" value="<?= $ci['id'] ?>">
+                                <button type="submit" name="remove_item" class="btn btn-danger" style="padding:0.4rem 0.8rem;">Remove</button>
+                            </form>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
 
@@ -125,16 +161,21 @@ $orders = $stmt->fetchAll();
                     <tr>
                         <td colspan="2"><strong>Total</strong></td>
                         <td><strong>$<?= number_format($cartTotal, 2) ?></strong></td>
+                        <td></td>
                     </tr>
                 </table>
 
-                <!-- Place Order button submits the form to process the order -->
-                <form method="POST">
-                    <button type="submit" name="place_order" class="btn btn-primary">Place Order</button>
-                </form>
+                <div style="display:flex; flex-wrap:wrap; gap:0.75rem; margin-top:1rem;">
+                    <form method="POST" style="margin:0;">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                        <button type="submit" name="place_order" class="btn btn-primary">Place Order</button>
+                    </form>
 
-                <!-- Clear Cart link removes all items from the session cart -->
-                <a href="dashboard.php?clear_cart=1" class="btn btn-danger">Clear Cart</a>
+                    <form method="POST" style="margin:0;">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                        <button type="submit" name="clear_cart" class="btn btn-danger">Clear Cart</button>
+                    </form>
+                </div>
             <?php endif; ?>
         </section>
 
@@ -169,6 +210,9 @@ $orders = $stmt->fetchAll();
         </section>
     </main>
 
+    <div style="margin: 1em 0; text-align: center;">
+        <button onclick="window.history.back()" class="btn">&larr; Back</button>
+    </div>
     <?php include 'footer.php'; ?>
 </body>
 </html>

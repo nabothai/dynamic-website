@@ -4,28 +4,24 @@ require_once __DIR__ . '/auth.php';
 ?>
 
 <nav class="navbar">
-    <!-- Restaurant logo / home link -->
-    <a href="index.php" class="logo">🍕 Bella Italia</a>
-
-    <ul>
-        <!-- These links appear for ALL visitors -->
-        <li><a href="index.php">Home</a></li>
-        <li><a href="menu.php">Menu</a></li>
-
+    <div class="logo">ZimBites Restaurant</div>
+    <ul class="nav-links">
+        <li><a href="logout_home.php">Home</a></li>
+        <li><a href="about.html">About Us</a></li>
         <?php if (isLoggedIn()): ?>
-            <!-- Extra links shown only to logged-in users -->
-            <li><a href="dashboard.php">My Orders</a></li>
-
             <?php if (isAdmin()): ?>
-                <!-- Admin-only link to the admin dashboard -->
-                <li><a href="admin_dashboard.php">Admin Dashboard</a></li>
+                <li><a href="admin_dashboard.php">Admin Panel</a></li>
+                <li><a href="logout.php">Logout (<?= htmlspecialchars($_SESSION['name'] ?? 'User') ?>)</a></li>
+            <?php else: ?>
+                <li><a href="menu.php">Menu</a></li>
+                <li><a href="contact.php">Contact Us</a></li>
+                <li><a href="dashboard.php">My Orders</a></li>
+                <li><a href="profile.php">Profile</a></li>
+                <li><a href="logout.php">Logout (<?= htmlspecialchars($_SESSION['name'] ?? 'User') ?>)</a></li>
             <?php endif; ?>
-
-            <!-- Show the logged-in user's name and a logout link -->
-            <li><a href="logout.php">Logout (<?= htmlspecialchars($_SESSION['name']) ?>)</a></li>
-
         <?php else: ?>
-            <!-- Show Login and Register links for guests -->
+            <li><a href="menu.php">Menu</a></li>
+            <li><a href="contact.php">Contact Us</a></li>
             <li><a href="login.php">Login</a></li>
             <li><a href="register.php">Register</a></li>
         <?php endif; ?>

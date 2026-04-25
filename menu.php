@@ -8,22 +8,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_to_cart'])) {
     // User must be logged in to add items to cart
     requireLogin();
 
-    // Cast to int to prevent any injection through the item_id field
-    $item_id = (int)$_POST['item_id'];
-    $qty     = (int)$_POST['quantity'];
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        die('Invalid request.');
+    }
 
-    // Initialize the cart array in the session if it doesn't exist yet
-    if (!isset($_SESSION['cart'])) $_SESSION['cart'] = [];
+    $item_id = filter_var($_POST['item_id'] ?? '', FILTER_VALIDATE_INT);
+    $qty     = filter_var($_POST['quantity'] ?? 1, FILTER_VALIDATE_INT, [
+        'options' => ['default' => 1, 'min_range' => 1, 'max_range' => 10]
+    ]);
 
-    // If the item is already in the cart, increase its quantity
-    // Otherwise, add it as a new entry
+    if (!$item_id || $qty < 1) {
+        header("Location: menu.php?error=invalid");
+        exit();
+    }
+
+    // Verify the item exists and is available
+    $stmt = $pdo->prepare("SELECT id FROM menu_items WHERE id = ? AND available = 1");
+    $stmt->execute([$item_id]);
+    if (!$stmt->fetch()) {
+        header("Location: menu.php?error=notfound");
+        exit();
+    }
+
+    if (!isset($_SESSION['cart'])) {
+        $_SESSION['cart'] = [];
+    }
+
     if (isset($_SESSION['cart'][$item_id])) {
         $_SESSION['cart'][$item_id] += $qty;
     } else {
         $_SESSION['cart'][$item_id] = $qty;
     }
 
-    // Redirect to avoid resubmitting the form on page refresh
     header("Location: menu.php?added=1");
     exit();
 }
@@ -43,7 +59,7 @@ foreach ($items as $item) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Menu - Bella Italia</title>
+    <title>Menu - ZimBites Restaurant</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -51,10 +67,22 @@ foreach ($items as $item) {
 
     <main class="menu-page">
         <h1>Our Menu</h1>
+        <div style="margin: 1em 0; text-align: center;">
+            <button onclick="window.history.back()" class="btn">&larr; Back</button>
+        </div>
 
-        <!-- Show confirmation banner when an item is added to cart -->
+        <div style="margin: 1em 0; text-align: center;">
+            <button onclick="window.history.back()" class="btn">&larr; Back</button>
+        </div>
+
+        <!-- Show confirmation or error banners -->
         <?php if (isset($_GET['added'])): ?>
             <div class="alert success">Item added to your cart!</div>
+        <?php endif; ?>
+        <?php if (isset($_GET['error']) && $_GET['error'] === 'invalid'): ?>
+            <div class="alert error">Invalid item or quantity selected.</div>
+        <?php elseif (isset($_GET['error']) && $_GET['error'] === 'notfound'): ?>
+            <div class="alert error">This item is no longer available.</div>
         <?php endif; ?>
 
         <!-- Loop through each category and display its items -->
@@ -75,7 +103,7 @@ foreach ($items as $item) {
                     <?php if (isLoggedIn()): ?>
                     <!-- Show the add-to-cart form only for logged-in users -->
                     <form method="POST">
-                        <!-- Hidden field sends the item ID with the form -->
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                         <input type="hidden" name="item_id" value="<?= $item['id'] ?>">
                         <!-- Quantity selector, limited between 1 and 10 -->
                         <input type="number" name="quantity" value="1" min="1" max="10">
@@ -92,6 +120,9 @@ foreach ($items as $item) {
         <?php endforeach; ?>
     </main>
 
+    <div style="margin: 1em 0; text-align: center;">
+        <button onclick="window.history.back()" class="btn">&larr; Back</button>
+    </div>
     <?php include 'footer.php'; ?>
 </body>
 </html>

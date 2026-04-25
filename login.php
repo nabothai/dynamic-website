@@ -6,6 +6,10 @@ $error = '';
 
 // Only run login logic when the form is submitted
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        die('Invalid request.');
+    }
+
     $email    = trim($_POST['email']);
     $password = $_POST['password'];
 
@@ -46,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Bella Italia</title>
+    <title>Login - ZimBites Restaurant</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -61,7 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <form method="POST" action="" autocomplete="off" class="login-form" style="max-width:350px;margin:2em auto;padding:2em;background:#fff;border-radius:10px;box-shadow:0 2px 8px #0001;display:flex;flex-direction:column;gap:1.2em;">
-            <input type="email" name="email" placeholder="Email Address" required autocomplete="off" style="padding:0.8em 1em;border-radius:6px;border:1px solid #ccc;font-size:1em;">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+            <input type="email" name="email" placeholder="Email Address" required autocomplete="off" style="padding:0.8em 1em;border-radius:6px;border:1px solid #ccc;font-size:1em;" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">
             <input type="password" name="password" placeholder="Password" required autocomplete="off" style="padding:0.8em 1em;border-radius:6px;border:1px solid #ccc;font-size:1em;">
             <button type="submit" style="padding:0.8em 1em;border:none;border-radius:6px;background:#c0392b;color:#fff;font-size:1.1em;cursor:pointer;transition:background 0.2s;">Login</button>
         </form>
@@ -69,6 +74,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p style="text-align:center;margin-top:1em;">No account? <a href="register.php">Register here</a></p>
     </div>
 
+    <div style="margin: 1em 0; text-align: center;">
+        <button onclick="window.history.back()" class="btn">&larr; Back</button>
+    </div>
     <?php include 'footer.php'; ?>
 </body>
 </html>

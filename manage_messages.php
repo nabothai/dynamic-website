@@ -19,7 +19,7 @@ if (isset($_GET['delete'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Messages - Bella Italia</title>
+    <title>Manage Messages - ZimBites Restaurant</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -63,6 +63,9 @@ if (isset($_GET['delete'])) {
         <?php endif; ?>
     </main>
 
+    <div style="margin: 1em 0; text-align: center;">
+        <button onclick="window.history.back()" class="btn">&larr; Back</button>
+    </div>
     <?php include 'footer.php'; ?>
 </body>
 </html>

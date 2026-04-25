@@ -6,51 +6,92 @@ require 'auth.php';
 requireAdmin();
 
 $msg = '';
+$error = '';
 
-// ===== CREATE — Add a new menu item =====
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_item'])) {
-    // Sanitize inputs with trim() to remove accidental whitespace
-    $name  = trim($_POST['name']);
-    $desc  = trim($_POST['description']);
-    $price = (float)$_POST['price'];  // Cast to float to ensure it's a number
-    $cat   = trim($_POST['category']);
-
-    // Basic validation before inserting
-    if ($name && $price > 0) {
-        // Prepared statement prevents SQL injection
-        $stmt = $pdo->prepare("INSERT INTO menu_items (name, description, price, category) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$name, $desc, $price, $cat]);
-        $msg = "Item added successfully!";
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        die('Invalid request.');
     }
-}
 
-// ===== UPDATE — Edit an existing menu item =====
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_item'])) {
-    $stmt = $pdo->prepare("
-        UPDATE menu_items
-        SET name=?, description=?, price=?, category=?, available=?
-        WHERE id=?
-    ");
-    $stmt->execute([
-        $_POST['name'],
-        $_POST['description'],
-        $_POST['price'],
-        $_POST['category'],
-        isset($_POST['available']) ? 1 : 0, // Checkbox: 1 if checked, 0 if not
-        $_POST['id']                         // ID of the item to update
-    ]);
-    $msg = "Item updated!";
-}
+    // Handle image upload for add and update
+    function handleImageUpload($inputName, $oldFile = null) {
+        if (isset($_FILES[$inputName]) && $_FILES[$inputName]['error'] === UPLOAD_ERR_OK) {
+            <div style="margin: 1em 0; text-align: center;">
+                <button onclick="window.history.back()" class="btn">&larr; Back</button>
+            </div>
+            $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif'];
+            $type = mime_content_type($_FILES[$inputName]['tmp_name']);
+            if (!isset($allowed[$type])) return $oldFile;
+            $ext = $allowed[$type];
+            $filename = uniqid('dish_', true) . '.' . $ext;
+            $dest = __DIR__ . '/images/' . $filename;
+            if (move_uploaded_file($_FILES[$inputName]['tmp_name'], $dest)) {
+                // Optionally delete old file
+                if ($oldFile && file_exists(__DIR__ . '/images/' . $oldFile)) {
+                    @unlink(__DIR__ . '/images/' . $oldFile);
+                }
+                return $filename;
+            }
+        }
+        return $oldFile;
+    }
 
-// ===== DELETE — Remove a menu item =====
-if (isset($_GET['delete'])) {
-    // Cast to int to prevent SQL injection via the URL parameter
-    $stmt = $pdo->prepare("DELETE FROM menu_items WHERE id = ?");
-    $stmt->execute([(int)$_GET['delete']]);
+    if (isset($_POST['add_item'])) {
+        $name  = trim($_POST['name']);
+        $desc  = trim($_POST['description']);
+        $price = filter_var($_POST['price'], FILTER_VALIDATE_FLOAT);
+        $cat   = trim($_POST['category']);
+        $img   = handleImageUpload('image');
 
-    // Redirect to avoid re-running the delete on page refresh
-    header("Location: manage_menu.php?msg=deleted");
-    exit();
+        if (!$name) {
+            $error = 'Item name is required.';
+        } elseif ($price === false || $price <= 0) {
+            $error = 'Please enter a valid price greater than 0.';
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO menu_items (name, description, price, category, available, image) VALUES (?, ?, ?, ?, 1, ?)");
+            $stmt->execute([$name, $desc, $price, $cat, $img]);
+            $msg = "Item added successfully!";
+        }
+    }
+
+    if (isset($_POST['update_item'])) {
+        $id    = filter_var($_POST['id'], FILTER_VALIDATE_INT);
+        $name  = trim($_POST['name']);
+        $desc  = trim($_POST['description']);
+        $price = filter_var($_POST['price'], FILTER_VALIDATE_FLOAT);
+        $cat   = trim($_POST['category']);
+        $avail = isset($_POST['available']) ? 1 : 0;
+        $oldImg = $_POST['old_image'] ?? null;
+        $img   = handleImageUpload('image', $oldImg);
+
+        if (!$id) {
+            $error = 'Invalid menu item.';
+        } elseif (!$name) {
+            $error = 'Item name is required.';
+        } elseif ($price === false || $price < 0) {
+            $error = 'Please enter a valid price.';
+        } else {
+            $stmt = $pdo->prepare("UPDATE menu_items SET name=?, description=?, price=?, category=?, available=?, image=? WHERE id=?");
+            $stmt->execute([$name, $desc, $price, $cat, $avail, $img, $id]);
+            $msg = "Item updated!";
+        }
+    }
+
+    if (isset($_POST['delete_item'])) {
+        $id = filter_var($_POST['id'], FILTER_VALIDATE_INT);
+        if ($id) {
+            // Optionally delete image file
+            $stmt = $pdo->prepare("SELECT image FROM menu_items WHERE id = ?");
+            $stmt->execute([$id]);
+            $img = $stmt->fetchColumn();
+            if ($img && file_exists(__DIR__ . '/images/' . $img)) {
+                @unlink(__DIR__ . '/images/' . $img);
+            }
+            $stmt = $pdo->prepare("DELETE FROM menu_items WHERE id = ?");
+            $stmt->execute([$id]);
+            $msg = 'Item deleted.';
+        }
+    }
 }
 
 // Fetch all menu items ordered by category for display
@@ -72,16 +113,20 @@ $items = $pdo->query("SELECT * FROM menu_items ORDER BY category")->fetchAll();
         <!-- Show feedback message after any CRUD action -->
         <?php if ($msg): ?>
             <div class="alert success"><?= htmlspecialchars($msg) ?></div>
+        <?php elseif ($error): ?>
+            <div class="alert error"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
         <!-- ===== ADD NEW ITEM FORM ===== -->
         <section class="form-section">
             <h2>Add New Item</h2>
-            <form method="POST">
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                 <input type="text"   name="name"        placeholder="Item Name"                    required>
                 <textarea            name="description"  placeholder="Description"></textarea>
                 <input type="number" name="price"        placeholder="Price" step="0.01" min="0"   required>
                 <input type="text"   name="category"     placeholder="Category (e.g. Pizza, Pasta)">
+                <input type="file"   name="image" accept="image/*">
                 <button type="submit" name="add_item" class="btn btn-primary">Add Item</button>
             </form>
         </section>
@@ -106,34 +151,39 @@ $items = $pdo->query("SELECT * FROM menu_items ORDER BY category")->fetchAll();
                 <td><?= $item['available'] ? '✅' : '❌' ?></td>
                 <td>
                     <!-- Inline edit form — each row has its own update form -->
-                    <form method="POST" style="display:inline">
-                        <!-- Hidden field sends the item ID so we know which row to update -->
+                    <form method="POST" enctype="multipart/form-data" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                         <input type="hidden" name="id"          value="<?= $item['id'] ?>">
+                        <input type="hidden" name="old_image"   value="<?= htmlspecialchars($item['image'] ?? '') ?>">
                         <input type="text"   name="name"        value="<?= htmlspecialchars($item['name']) ?>"        required>
                         <input type="number" name="price"       value="<?= $item['price'] ?>"                         step="0.01">
                         <input type="text"   name="category"    value="<?= htmlspecialchars($item['category']) ?>">
                         <input type="text"   name="description" value="<?= htmlspecialchars($item['description']) ?>">
-
-                        <!-- Checkbox to toggle availability -->
+                        <input type="file"   name="image" accept="image/*">
+                        <?php if (!empty($item['image'])): ?>
+                            <br><img src="images/<?= htmlspecialchars($item['image']) ?>" alt="Current Image" style="max-width:60px; max-height:60px; margin:0.5em 0;">
+                        <?php endif; ?>
                         <label>
                             <input type="checkbox" name="available" <?= $item['available'] ? 'checked' : '' ?>>
                             Available
                         </label>
-
                         <button type="submit" name="update_item" class="btn">Update</button>
                     </form>
 
-                    <!-- Delete link — passes the item ID in the URL as a GET parameter -->
-                    <!-- onclick confirm() asks the user before deleting -->
-                    <a href="manage_menu.php?delete=<?= $item['id'] ?>"
-                       class="btn btn-danger"
-                       onclick="return confirm('Delete this item?')">Delete</a>
+                    <form method="POST" style="display:inline; margin-left:0.5rem;">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
+                        <input type="hidden" name="id" value="<?= $item['id'] ?>">
+                        <button type="submit" name="delete_item" class="btn btn-danger" onclick="return confirm('Delete this item?')">Delete</button>
+                    </form>
                 </td>
             </tr>
             <?php endforeach; ?>
         </table>
     </main>
 
+    <div style="margin: 1em 0; text-align: center;">
+        <button onclick="window.history.back()" class="btn">&larr; Back</button>
+    </div>
     <?php include 'footer.php'; ?>
 </body>
 </html>

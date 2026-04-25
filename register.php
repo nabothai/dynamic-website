@@ -9,6 +9,9 @@ $success = '';
 
 // Only process the form when the user submits it (POST request)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !verifyCsrfToken($_POST['csrf_token'])) {
+        die('Invalid request.');
+    }
 
     // Retrieve and clean up form inputs
     // trim() removes extra spaces from the start and end
@@ -63,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - Bella Italia</title>
+    <title>Register - ZimBites Restaurant</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -84,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Registration form — posts back to this same page -->
         <form method="POST" action="">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
             <!-- htmlspecialchars() prevents XSS by escaping special characters in repopulated values -->
             <input type="text"     name="name"             placeholder="Full Name"           value="<?= htmlspecialchars($_POST['name']  ?? '') ?>" required>
             <input type="email"    name="email"            placeholder="Email Address"        value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
@@ -95,6 +99,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p>Already have an account? <a href="login.php">Login</a></p>
     </div>
 
+    <div style="margin: 1em 0; text-align: center;">
+        <button onclick="window.history.back()" class="btn">&larr; Back</button>
+    </div>
     <?php include 'footer.php'; ?>
 </body>
 </html>

@@ -18,4 +18,4 @@ try {
     die("Database connection failed: " . $e->getMessage());
 }
 
-// Note: No closing ?> tag is intentional to prevent accidental whitespace output.
+// Note: No closing ?> 
